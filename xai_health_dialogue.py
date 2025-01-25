@@ -39,12 +39,10 @@ client = OpenAI(
 )
 
 def dialogue_tab(user_id="user_1"):
-    st.header("Dialogue")
-
     get_system_message(user_id=user_id)
     user_provides_health_update(user_id=user_id)
     review_your_relationship_with_user(user_id=user_id)
-    show_history(   user_id=user_id)
+
 
 def user_profile_tab(user_id="user_1"):
     manage_user_profile(user_id=user_id)
@@ -79,58 +77,60 @@ def load_session_state(filename=f"{XAI_HEALTH_DIR}/session_state.json"):
 
 def user_provides_health_update(user_id="user_1"):
     # User input for health update
-    user_input = st.text_area(
-        "How's your health today? Fill me in on sleep, nutrition, exercise, stress, and anything else that's on your mind.",
-        key="health_input",
-    )
-
-    if user_input:
-        # Get current datetime
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Append user input to session state
-        st.session_state.session_state.append(
-            {"role": "user", "content": user_input, "timestamp": current_time}
+    with st.form("health_update_form"):
+        user_input = st.text_area(
+            "How's your health today? Fill me in on sleep, nutrition, exercise, stress, and anything else that's on your mind.",
+            key="health_input",
         )
+        submitted = st.form_submit_button("Submit")
 
-        # Prepare messages for OpenAI, including conversation history
-        messages = [
-            dict(role="system", content=get_system_message())
-        ] + st.session_state.session_state
+        if submitted:
+            # Get current datetime
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model="grok-2-latest", messages=messages
-        )
+            # Append user input to session state
+            st.session_state.session_state.append(
+                {"role": "user", "content": user_input, "timestamp": current_time}
+            )
 
-        # Get AI's response
-        ai_response = response.choices[0].message.content
+            # Prepare messages for OpenAI, including conversation history
+            messages = [
+                dict(role="system", content=get_system_message())
+            ] + st.session_state.session_state
 
-        # Append AI response to session state with timestamp
-        st.session_state.session_state.append(
-            {
-                "role": "assistant",
-                "content": ai_response,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            }
-        )
+            # Call OpenAI API
+            response = client.chat.completions.create(
+                model="grok-2-latest", messages=messages
+            )
 
-        # Save session state to file
-        save_session_state(st.session_state.session_state)
+            # Get AI's response
+            ai_response = response.choices[0].message.content
 
-        # Display AI response
-        st.write("Feedback from AI:")
-        st.write(ai_response)
+            # Append AI response to session state with timestamp
+            st.session_state.session_state.append(
+                {
+                    "role": "assistant",
+                    "content": ai_response,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+            )
 
-        recommendations = [
-            line
-            for line in ai_response.split("\n")
-            if line.startswith("Recommendation: ")
-        ]
-        if recommendations:
-            st.write("Actionable Recommendations:")
-            for rec in recommendations:
-                st.write(rec)
+            # Save session state to file
+            save_session_state(st.session_state.session_state)
+
+            # Display AI response
+            st.write("Feedback from AI:")
+            st.write(ai_response)
+
+            recommendations = [
+                line
+                for line in ai_response.split("\n")
+                if line.startswith("Recommendation: ")
+            ]
+            if recommendations:
+                st.write("Actionable Recommendations:")
+                for rec in recommendations:
+                    st.write(rec)
 
 
 
@@ -188,15 +188,14 @@ def manage_user_profile(user_id="user_1"):
     user_id = "user_1"  # This is now hardcoded for the dummy implementation
     profile_filename = f"{XAI_HEALTH_DIR}/{user_id}_profile.json"
     print(profile_filename)
-    # Check if we have a profile
-    st.info(f"User ID: {user_id}")
+
     if not os.path.exists(profile_filename):
         st.warning("No profile found for this user.")
         with st.form("create_profile"):
             st.subheader("Create a New Profile")
             profile_text = st.text_area(
                 "Enter your profile information here:",
-                height=200,
+                height=300,
             )
             submitted = st.form_submit_button("Create Profile")
             if submitted:
@@ -210,13 +209,12 @@ def manage_user_profile(user_id="user_1"):
         with open(profile_filename, "r") as file:
             profile = json.load(file)
         # display profile
-        st.subheader("Your Health History")
 
-        # optionally edit
-        edit_profile = st.radio("Update Your History", ["No", "Yes"], horizontal=True)
+       # col1, col2, col3 = st.columns(1, 5, 1)
+        edit_profile = st.radio("Update?", ["No", "Yes"], horizontal=True)
         if edit_profile == "Yes":
             with st.form("edit_profile"):
-                profile_text = st.text_area("Update", profile.get("profile_text", ""), height=400)
+                profile_text = st.text_area("Update", profile.get("profile_text", ""), height=300, help="Update your health history here.  Free text, any format, anything you think is important: just tell Coach.")
 
                 submitted = st.form_submit_button("Update")
                 if submitted:
@@ -226,6 +224,7 @@ def manage_user_profile(user_id="user_1"):
         else:
             st.write(profile.get("profile_text", "No profile found."))
 
+    st.caption(f"User ID: {user_id}")
 
 def get_system_message(user_id="user_1"):
     base_system_message = "You are a personal health assistant providing feedback and recommendations based on user health updates. Your advice is tailored specifically for the user.  In creating the advice you consider all the information in his user profile and his conversation history.\n\n"
@@ -272,19 +271,40 @@ def give_me_the_latest_tab():
 def main():
 
    # initialize_default_user()
+    user_id = "user_1"
     st.session_state.session_state = load_session_state()
-    tabs = ["Dialogue", "Recent Research", "Your Health History", "About Your Coach"]
-    selected_tab = st.sidebar.radio("Select Tab", tabs)
 
-    if selected_tab == "Dialogue":
-        dialogue_tab()
-    elif selected_tab == "Recent Research":
+    col1, col2 = st.columns([6,4])
+
+
+    with col2.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
+        st.markdown("""
+           - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
+           - Real-Time Data Access
+           - Personality and Interaction Style
+           - Multimodal Capabilities
+           - Integration with X Platform
+           - API Flexibility
+           - Human-Thriving-Focused AI Development
+           """)
+    col2.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
+
+    with col2.expander("About Coach", expanded=False):
+            coach = CoachProfile()
+            coach.coach_tab()
+
+    with col1.expander("Give Me The Latest Health Science From Grok"):
         give_me_the_latest_tab()
-    elif selected_tab == "Your Health History":
+
+
+    with col1.expander("Talk to Coach", expanded=True):
+        dialogue_tab()
+    with col1.expander("Update My Health History"):
         user_profile_tab()
-    elif selected_tab == "About Your Coach":
-        coach = CoachProfile()
-        coach.coach_tab()
+
+    show_history(user_id=user_id)
+
+
 
 
 class CoachProfile:
@@ -300,8 +320,8 @@ class CoachProfile:
     def coach_tab(self):
         self.load_all_available_attributes()
         self.load_current_coach_attributes()
-        self.modify_current_coach_attributes()
         self.display_current_coach_personality()
+        self.modify_current_coach_attributes()
 
 
 
@@ -361,7 +381,7 @@ class CoachProfile:
         attributes = self.load_current_coach_attributes()
         #st.write(f"Current coach attributes: {attributes}")
         if attributes:
-            st.subheader("Current Coach Personality:")
+            st.subheader("Current Personality")
             for attribute in attributes:
                 st.markdown(f"- {self.all_available_attributes[attribute]}")
         else:
