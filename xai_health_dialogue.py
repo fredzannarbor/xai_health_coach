@@ -274,10 +274,10 @@ def main():
     user_id = "user_1"
     st.session_state.session_state = load_session_state()
 
-    col1, col2 = st.columns([6,4])
+    #col1, col2 = st.columns([6,4])
 
 
-    with col2.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
+    with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
         st.markdown("""
            - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
            - Real-Time Data Access
@@ -287,19 +287,19 @@ def main():
            - API Flexibility
            - Human-Thriving-Focused AI Development
            """)
-    col2.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
+    st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
 
-    with col2.expander("About Coach", expanded=False):
+    with st.expander("About Coach", expanded=False):
             coach = CoachProfile()
             coach.coach_tab()
 
-    with col1.expander("Give Me The Latest Health Science From Grok"):
+    with st.expander("Give Me The Latest Health Science From Grok"):
         give_me_the_latest_tab()
 
 
-    with col1.expander("Talk to Coach", expanded=True):
+    with st.expander("Talk to Coach", expanded=True):
         dialogue_tab()
-    with col1.expander("Update My Health History"):
+    with st.expander("Update My Health History"):
         user_profile_tab()
 
     show_history(user_id=user_id)
