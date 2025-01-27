@@ -12,6 +12,23 @@ This repository contains a Python-based health coach application that leverages 
 * **Customizable Coach Personality:**  Allows users to select attributes that influence the coach's communication style (e.g., friendly, research-oriented, direct).
 * **Integration with Grok:** Utilizes the Grok API for accessing relevant health information and research.
 
+### Roadmap & Wish List
+
+Help me showcase the unique strengths of Grok's API!  Some key building blocks that you may be able to help with:
+
+- _Implement X authentication_
+- Implement chargeback to user xai api account
+- Health-coach-powered Spaces on X, etc.
+- Improve Grok's ability to find real-time peer-reviewed health knowledge
+   - Give me the latest on wastewater measures of viral threats
+   - Improve customization of coach
+   - behind-scenes translate & export to other health formats (e.g. Apple's HealthKit)
+  - Improve multimodal input & analysis -- ECGs, etc.
+- Human-Thriving-Focused Dialogue
+  - The end goal of AI health dialogue should be to improve the probability of species survival
+  - Truth-seeking health guidance not modified by non-health/non-human-thriving priorities
+  
+
 ## Getting Started
 
 1. **Clone the repository:**
@@ -36,10 +53,7 @@ This repository contains a Python-based health coach application that leverages 
 
 ## Usage
 
-1. **Dialogue Tab:** Interact with the health coach, provide health updates, and receive personalized feedback and recommendations.
-2. **Recent Research Tab:** Access curated links to relevant health information and research, powered by Grok.
-3. **Your Health History Tab:** Create and manage your health profile by entering information in a free-text field.
-4. **About Your Coach Tab:** Customize the coach's personality by selecting attributes that influence its communication style.
+
 
 ## File Structure
 
