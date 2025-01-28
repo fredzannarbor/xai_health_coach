@@ -257,16 +257,6 @@ def review_your_relationship_with_user(user_id="user_1"):
     return
 
 
-# Main app function
-def give_me_the_latest_tab():
-    # dict of canned searches
-    canned_searches = {"Intentional health": "https://grok.com/share/72297e01-7fbb-49f8-8452-3b013d90d0ad", "Fitness benefits of housework": "https://grok.com/share/f7a9dca9-d1ad-4d7b-a562-2f28627897d1"}
-    # show a go button for each canned search
-    st.write("Peer-reviewed recent research results, powered by Grok")
-    for search_label, search_url in canned_searches.items():
-        st.markdown(f"- [{search_label}]({search_url})")  # Display the hyperlinked text
-
-
 
 def main():
 
@@ -307,6 +297,45 @@ def main():
 
 
 
+# Main app function
+def give_me_the_latest_tab():
+    # dict of canned searches
+    canned_searches = {"Intentional health": "https://grok.com/share/72297e01-7fbb-49f8-8452-3b013d90d0ad", "Fitness benefits of housework": "https://grok.com/share/f7a9dca9-d1ad-4d7b-a562-2f28627897d1"}
+    """
+    {
+"Resistance Band Training": "",
+"Functional Fitness": "",
+"High-Intensity Interval Training": "",
+"Core Stability Workouts": "",
+"Bodyweight Circuit Training": "",
+"Virtual Reality Exercise": "",
+"Aquatic Aerobics": "",
+"Mobility Drills": "",
+"Nutrition and Depression": "",
+"Exercise-Induced Mood Boost": "",
+"Digital Mental Health Interventions": "",
+"Neurofeedback Therapy": "",
+"Sleep Quality and Anxiety": "",
+"Mindfulness Meditation": "",
+"Nature Exposure Therapy": "",
+"Social Media Impact": ""
+"Time-Restricted Eating": "",
+"Probiotics for Gut Health": "",
+"Ketogenic Diet Effects": "",
+"Intermittent Fasting": "",
+"Plant-Based Diets": "",
+"Omega-3 Fatty Acids": "",
+"Microbiome and Inflammation": "",
+"Adaptogens in Diet": ""
+}
+    """
+    # show a go button for each canned search
+    st.write("Peer-reviewed recent research results, powered by Grok")
+    for search_label, search_url in canned_searches.items():
+        st.markdown(f"- [{search_label}]({search_url})")  # Display the hyperlinked text
+
+
+
 class CoachProfile:
 
     def __init__(self, user_id="user_1", selected_attributes=[], available_attributes_file_path=f"{XAI_HEALTH_DIR}/all_available_coach_attributes.json") -> None:
@@ -322,8 +351,6 @@ class CoachProfile:
         self.load_current_coach_attributes()
         self.display_current_coach_personality()
         self.modify_current_coach_attributes()
-
-
 
     def load_current_coach_attributes(self):
         """
