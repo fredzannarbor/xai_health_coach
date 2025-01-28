@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import sys
 import urllib
 import argparse
+import json
 
 import streamlit as st
 from openai import OpenAI
@@ -33,15 +35,16 @@ def display_dictionary_attributes(self, attributes_dict, default_selected=[]):
     return selected_attributes
 
 XAI_HEALTH_DIR = os.getenv("XAI_HEALTH_DIR")
-print(XAI_HEALTH_DIR)
+XAI_STACKS_DIR = 'xai_stacks'
+if not XAI_STACKS_DIR:
+    XAI_STACKS_DIR = os.getenv("XAI_STACKS_DIR")
+
 st.title("xAI Health Coach")
 def get_user_id(dummy_user="user_1"):
     if dummy_user:
         return dummy_user
     else:
         return st.session_state.user_id
-
-
 
 
 # Configuration for OpenAI API
@@ -55,6 +58,39 @@ client = OpenAI(
 
 
 class GiveMeTheLatest:
+
+    def __init__(self, real_time_friendly_morpher=None,reformulater=None, morph_prompt=None, exploder_instruction=None, exploder_value=8):
+        self.morph_prompt = morph_prompt or "Optimize this prompt."
+        self.reformulater = f"{morph_prompt}. Return the revised prompt as plain text without pleasantries or explanations."
+        self.real_time_friendly_morpher = real_time_friendly_morpher or "You are a search assistant who is fully aware of all Grok's real-time information sources including but not limited to news, fresh X content, fresh web content, Arxiv and other pdfs, financial, sports, and location-based data. As you know, not all these sources are currently available via the xai API. To remedy this shortcoming, you will reformulate the following prompts to take full advantage of real-time results.  You must prioritize real-time information from peer-reviewed or highly credible sources."
+        self.exploder_value = exploder_value or 8
+        self.exploder_instruction = exploder_instruction or f"Your task is to 'explode' this prompt, which describes a particular substantive domain, into a set of {exploder_value} prompts that are subsets of or interestingly adjacent to this domain. Please provide those prompts as valid JSON."
+
+
+    def generate_real_time_friendly_topic_link_sets(self, prompts, exploder_value=8):
+        # generates real-time-friendly prompts for domain-specific publications
+        # prompts are high-level concepts like health, space warfare, etc.
+        # example prompts: ["xai Health Coach on fitness, nutrition, exercise, equipment", "UltraScale Aerospace publication"]
+        if isinstance(prompts,str):
+            prompts = [prompts]
+        all_new_link_sets = []
+        exploder_morph_prompt = self.real_time_friendly_morpher + '/n/n' + self.exploder_instruction
+        new_links = []
+        exploded_prompts_dict = {}
+        for prompt in prompts:
+            if prompt:
+                # add prompt to dict
+                exploded_prompts_dict[prompt] = prompt
+                new_link_set = self.morph_prompts(prompt, exploder_morph_prompt, create_link=True)
+                if new_link_set:
+                    all_new_link_sets.append(new_link_set)
+                    exploded_prompts_dict[prompt] = new_link_set
+        return exploded_prompts_dict
+
+    def save_exploded_prompts_dict(self, exploded_prompts_dict):
+        with open(f"{XAI_STACKS_DIR}/exploded_prompts_dict.json", "w") as file:
+            json.dump(exploded_prompts_dict, file, indent=4)
+
 
     def morph_prompts(self, prompts, morph_prompt=None, create_link=True):
         """
@@ -132,9 +168,11 @@ if __name__ == "__main__":
     create_link = args.create_link
 
     give_me_the_latest = GiveMeTheLatest()
-    print(prompts, morph_prompt, create_link)
-    links = give_me_the_latest.morph_prompts(prompts=prompts, morph_prompt=morph_prompt, create_link=create_link)
-    for l in links:
-        print(l)
+    #print(prompts, morph_prompt, create_link)
+    new_link_sets = give_me_the_latest.generate_real_time_friendly_topic_link_sets(prompts=prompts, exploder_value=8)
+    print(new_link_sets)
+    #links = give_me_the_latest.morph_prompts(prompts=prompts, morph_prompt=morph_prompt, create_link=create_link)
+    #for l in links:
+   #     print(l)
 
 
