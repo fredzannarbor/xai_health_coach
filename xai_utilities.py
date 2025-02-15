@@ -5,6 +5,7 @@ import sys
 import urllib
 import argparse
 import json
+from pprint import pprint
 
 import streamlit as st
 from openai import OpenAI
@@ -169,8 +170,9 @@ if __name__ == "__main__":
 
     give_me_the_latest = GiveMeTheLatest()
     #print(prompts, morph_prompt, create_link)
-    new_link_sets = give_me_the_latest.generate_real_time_friendly_topic_link_sets(prompts=prompts, exploder_value=8)
-    print(new_link_sets)
+    exploded_stacks = give_me_the_latest.generate_real_time_friendly_topic_link_sets(prompts=prompts, exploder_value=8)
+    pprint(exploded_stacks)
+    give_me_the_latest.save_exploded_prompts_dict(exploded_stacks)
     #links = give_me_the_latest.morph_prompts(prompts=prompts, morph_prompt=morph_prompt, create_link=create_link)
     #for l in links:
    #     print(l)
