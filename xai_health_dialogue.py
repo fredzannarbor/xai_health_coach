@@ -1,15 +1,16 @@
-import json
-import logging
-import os
-from datetime import datetime
-from ftplib import all_errors
-from pprint import pprint
 
+import logging
 import streamlit as st
-from click import option
+import os
 from dotenv import load_dotenv
+import json
+from datetime import datetime
 from openai import OpenAI
-from streamlit.elements.lib.options_selector_utils import convert_to_sequence_and_check_comparable
+import stripe
+import tweepy
+
+from urllib.parse import parse_qs, urlparse
+
 
 if "session_state" not in st.session_state:
     st.session_state.session_state = []
@@ -38,29 +39,30 @@ client = OpenAI(
     base_url="https://api.x.ai/v1",
 )
 
-def dialogue_tab(user_id="user_1"):
-    get_system_message(user_id=user_id)
-    user_provides_health_update(user_id=user_id)
-    review_your_relationship_with_user(user_id=user_id)
+def dialogue_tab(user_id):
+    get_system_message(user_id)
+    user_provides_health_update(user_id)
+    review_your_relationship_with_user(user_id)
 
 
-def user_profile_tab(user_id="user_1"):
-    manage_user_profile(user_id=user_id)
+def user_profile_tab(user_id):
+    manage_user_profile(user_id)
 
 
 # Function to save session state
-def save_session_state(state, filename=f"{XAI_HEALTH_DIR}/session_state.json"):
+def save_session_state(state):
+    filename = st.session_state.user_id
     filepath = os.path.join(
-        XAI_HEALTH_DIR, "session_state.json"
-    )  # Safer path construction
+        XAI_HEALTH_DIR, filename, "session_state.json")
+
     print(f"Saving session state: {state}")  # Print before saving
     with open(filepath, "w") as file:
         json.dump(state, file, indent=4)  # Use indent for readability
 
 
-def load_session_state(filename=f"{XAI_HEALTH_DIR}/session_state.json"):
+def load_session_state(filename):
     filepath = os.path.join(
-        XAI_HEALTH_DIR, "session_state.json"
+        XAI_HEALTH_DIR, filename
     )  # Safer path construction
     if os.path.exists(filepath):
         print(f"Loading session state from {filepath}")  # Print full path!
@@ -75,7 +77,7 @@ def load_session_state(filename=f"{XAI_HEALTH_DIR}/session_state.json"):
     return []
 
 
-def user_provides_health_update(user_id="user_1"):
+def user_provides_health_update(user_id):
     # User input for health update
     with st.form("health_update_form"):
         user_input = st.text_area(
@@ -138,7 +140,7 @@ def user_provides_health_update(user_id="user_1"):
 
 
 # Display conversation history in reverse chronological order
-def show_history(user_id="user_1"):
+def show_history(user_id):
     if st.session_state.session_state:
         with st.expander("Show Conversation History", expanded=False):
             # Group messages by date
@@ -171,22 +173,20 @@ def initialize_default_user():
     os.makedirs(XAI_HEALTH_DIR, exist_ok=True)
 
     # Save the default profile
-    with open(f"{XAI_HEALTH_DIR}/{default_user_id}_profile.json", "w") as file:
+    with open(f"{XAI_HEALTH_DIR}/userdata/{default_user_id}_profile.json", "w") as file:
         json.dump(default_profile, file)
 
     print(f"Initialized default user profile for {default_user_id}")
 
 
-def manage_user_profile(user_id="user_1"):
+def manage_user_profile(user_id):
     """
     Manages user's personal profile where all info is entered in one free text field.
     - Checks if we have a profile for the user.
     - If not, prompts to create one.
     - If we do, allows the profile to be displayed and edited in a single text area.
     """
-    # Use a default user ID when there's no authentication
-    user_id = "user_1"  # This is now hardcoded for the dummy implementation
-    profile_filename = f"{XAI_HEALTH_DIR}/{user_id}_profile.json"
+    profile_filename = f"{XAI_HEALTH_DIR}/userdata/{user_id}_profile.json"
     print(profile_filename)
 
     if not os.path.exists(profile_filename):
@@ -230,7 +230,7 @@ def get_system_message(user_id="user_1"):
     base_system_message = "You are a personal health assistant providing feedback and recommendations based on user health updates. Your advice is tailored specifically for the user.  In creating the advice you consider all the information in his user profile and his conversation history.\n\n"
     #personality_attributes = load_coach_personality(user_id)
     coach_attributes_file = f"{XAI_HEALTH_DIR}/{user_id}_coach_attributes.json"
-    coach = CoachProfile(user_id=user_id)
+    coach = CoachProfile(user_id)
     if os.path.exists(coach_attributes_file):
         with open(coach_attributes_file, "r") as f:
             coach_attributes = json.load(f)
@@ -257,16 +257,114 @@ def review_your_relationship_with_user(user_id="user_1"):
     return
 
 
+def twitter_auth():
+    consumer_key = st.secrets["twitter"]["consumer_key"]
+    consumer_secret = st.secrets["twitter"]["consumer_secret"]
+
+    # Case 1: Already authenticated
+    if "access_token" in st.session_state and "access_token_secret" in st.session_state:
+        auth = tweepy.OAuth1UserHandler(
+            consumer_key, consumer_secret,
+            st.session_state.access_token, st.session_state.access_token_secret
+        )
+        api = tweepy.API(auth)
+        try:
+            user = api.verify_credentials()
+            st.session_state.user_id = user.screen_name
+            st.session_state.authenticated = True
+            st.success(f"Logged in as @{user.screen_name}")
+            return user.screen_name
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+            return None
+
+    # Case 2: Callback from Twitter with oauth_verifier
+    elif "oauth_verifier" in st.query_params and "oauth_token" in st.query_params:
+        oauth_token = st.query_params["oauth_token"]
+        verifier = st.query_params["oauth_verifier"]
+        auth = tweepy.OAuth1UserHandler(
+            consumer_key, consumer_secret,
+            callback="http://localhost:8501/?auth=twitter"
+        )
+        # Set the request token manually using oauth_token from the redirect
+        auth.request_token = {
+            "oauth_token": oauth_token,
+            "oauth_token_secret": ""  # Secret isn’t needed for this step
+        }
+        try:
+            access_token, access_token_secret = auth.get_access_token(verifier)
+            st.session_state.access_token = access_token
+            st.session_state.access_token_secret = access_token_secret
+            api = tweepy.API(auth)
+            user = api.verify_credentials()
+            st.session_state.user_id = user.screen_name
+            st.session_state.authenticated = True
+            st.rerun()
+            return user.screen_name
+        except Exception as e:
+            st.error(f"Failed to get access token: {e}")
+            return None
+
+    # Case 3: Start authentication process
+    else:
+        auth = tweepy.OAuth1UserHandler(
+            consumer_key, consumer_secret,
+            callback="http://localhost:8501/?auth=twitter"
+        )
+        try:
+            url = auth.get_authorization_url()
+            st.session_state.request_token = auth.request_token  # Optional for debugging
+            st.write("Please authenticate with Twitter:")
+            st.markdown(f"[Click here to log in]({url})")
+            return None
+        except Exception as e:
+            st.error(f"Failed to get authorization URL: {e}")
+            return None
+
+def check_stripe_subscription(user_id):
+    stripe.api_key = st.secrets["stripe"]["api_key"]
+    try:
+        # Check if user has a Stripe customer ID
+        customer_id_file = f"{XAI_HEALTH_DIR}/{user_id}_stripe_customer.json"
+        if os.path.exists(customer_id_file):
+            with open(customer_id_file, "r") as f:
+                customer_data = json.load(f)
+                customer_id = customer_data["customer_id"]
+        else:
+            # Create a new customer
+            customer = stripe.Customer.create(email=f"{user_id}@example.com")
+            customer_id = customer["id"]
+            with open(customer_id_file, "w") as f:
+                json.dump({"customer_id": customer_id}, f)
+
+        # Check active subscriptions
+        subscriptions = stripe.Subscription.list(customer=customer_id)
+        if subscriptions.data and subscriptions.data[0].status == "active":
+            return True
+        else:
+            st.write("Premium features require a subscription.")
+            st.markdown(f"[Subscribe here]({st.secrets['stripe']['subscription_link']})")
+            return False
+    except Exception as e:
+        st.error(f"Stripe error: {e}")
+        return False
 
 def main():
 
-   # initialize_default_user()
-    user_id = "user_1"
-    st.session_state.session_state = load_session_state()
+    load_dotenv()
 
-    #col1, col2 = st.columns([6,4])
+    # Handle Twitter authentication
+    user_id = twitter_auth()
 
-
+    if not user_id:
+        user_id = "test_user"
+      #  return
+    #st.write(user_id)
+    # Load session state for this user
+    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
+    st.session_state.session_state = load_session_state(this_user_session_state_file)
+    st.caption(f"Logged in as {user_id}")
+    # UI layout
     with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
         st.markdown("""
            - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
@@ -280,21 +378,22 @@ def main():
     st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
 
     with st.expander("About Coach", expanded=False):
-            coach = CoachProfile()
-            coach.coach_tab()
+        coach = CoachProfile(user_id)
+        coach.coach_tab()
 
     with st.expander("Give Me The Latest Health Science From Grok"):
         give_me_the_latest_tab()
 
-
     with st.expander("Talk to Coach", expanded=True):
-        dialogue_tab()
+        if check_stripe_subscription(user_id):
+            dialogue_tab(user_id)  # Premium feature
+        else:
+            st.write("Subscribe to talk to Coach!")
+
     with st.expander("Update My Health History"):
-        user_profile_tab()
+        user_profile_tab(user_id)
 
-    show_history(user_id=user_id)
-
-
+    show_history(user_id)
 
 
 # Main app function
@@ -333,12 +432,35 @@ def give_me_the_latest_tab():
     st.write("Peer-reviewed recent research results, powered by Grok")
     for search_label, search_url in canned_searches.items():
         st.markdown(f"- [{search_label}]({search_url})")  # Display the hyperlinked text
+   # get_research_from_before_learning_cutoff(canned_searches)
 
+
+def get_research_from_before_learning_cutoff(canned_searches):
+    researcher_message = "You are a health science expert who is thoroughly familiar with the scientific literature on every aspect of health."
+    for search_label, search_url in canned_searches.items():
+        topic_message = f"Give me the very latest research on {search_label}."
+        messages = [
+            dict(role="system", content=researcher_message), dict(role="user", content=topic_message)
+        ]
+        client = OpenAI(
+            api_key=XAI_API_KEY,
+            base_url="https://api.x.ai/v1",
+        )
+
+        # Call OpenAI API
+        response = client.chat.completions.create(
+            model="grok-2-latest", messages=messages
+        )
+
+        # Get AI's response
+        topic_response = response.choices[0].message.content
+        st.write(f"**{search_label}**")
+        st.write(topic_response)
 
 
 class CoachProfile:
 
-    def __init__(self, user_id="user_1", selected_attributes=[], available_attributes_file_path=f"{XAI_HEALTH_DIR}/all_available_coach_attributes.json") -> None:
+    def __init__(self, user_id, selected_attributes=[], available_attributes_file_path=f"{XAI_HEALTH_DIR}/all_available_coach_attributes.json") -> None:
 
         self.user_id = user_id
         self.selected_attributes = selected_attributes
