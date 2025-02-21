@@ -363,7 +363,7 @@ def main():
     # Load session state for this user
     this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
     st.session_state.session_state = load_session_state(this_user_session_state_file)
-    st.caption(f"Logged in as {user_id}")
+    #st.caption(f"Logged in as {user_id}")
     # UI layout
     with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
         st.markdown("""
