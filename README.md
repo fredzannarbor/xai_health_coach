@@ -51,8 +51,6 @@ Help me showcase the unique strengths of Grok's API!  Some key building blocks t
    streamlit run xai_health_dialogue.py 
    ```
 
-## Usage
-
 
 
 ## File Structure
