@@ -102,8 +102,7 @@ def user_provides_health_update(user_id):
     with st.form("health_update_form"):
         user_input = st.text_area(
             "How's your health today? Fill me in on sleep, nutrition, exercise, stress, and anything else that's on your mind.",
-            key="health_input",
-        )
+            key="health_input",        )
         submitted = st.form_submit_button("Submit")
 
         if submitted:
