@@ -388,6 +388,7 @@ def twitter_auth():
     environment = os.getenv("ENVIRONMENT")
     print(f"Environment: {environment}")
     environment = "dev"
+    callback = None
     if environment == "dev":
         callback = "http://localhost:8501/"
     else:
