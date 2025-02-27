@@ -391,7 +391,7 @@ def twitter_auth():
     if environment == "dev":
         callback = "http://localhost:8501/"
     else:
-        callback = "https://34.34.172.181.254/"
+        callback = "https://34.172.181.254:8501/"
     print(callback)
     # Handle OAuth callback
     if 'oauth_verifier' in st.query_params and 'oauth_token' in st.query_params:
