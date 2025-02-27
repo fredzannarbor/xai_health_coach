@@ -12,6 +12,26 @@ import tweepy
 from urllib.parse import parse_qs, urlparse
 
 
+logging.basicConfig(level=logging.DEBUG)
+
+def setup_logging():
+    logger = logging.getLogger('twitter_auth')
+    logger.setLevel(logging.DEBUG)
+
+
+    # Create console handler
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+
+    # Create formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    ch.setFormatter(formatter)
+
+    # Add handler to logger
+    logger.addHandler(ch)
+    return logger
+
+logger = setup_logging()
 if "session_state" not in st.session_state:
     st.session_state.session_state = []
 
@@ -27,7 +47,7 @@ def get_user_id(dummy_user="user_1"):
     else:
         return st.session_state.user_id
 
-
+ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 
 # Configuration for OpenAI API
@@ -256,71 +276,6 @@ def review_your_relationship_with_user(user_id="user_1"):
     }
     return
 
-
-def twitter_auth():
-    consumer_key = st.secrets["twitter"]["consumer_key"]
-    consumer_secret = st.secrets["twitter"]["consumer_secret"]
-
-    # Case 1: Already authenticated
-    if "access_token" in st.session_state and "access_token_secret" in st.session_state:
-        auth = tweepy.OAuth1UserHandler(
-            consumer_key, consumer_secret,
-            st.session_state.access_token, st.session_state.access_token_secret
-        )
-        api = tweepy.API(auth)
-        try:
-            user = api.verify_credentials()
-            st.session_state.user_id = user.screen_name
-            st.session_state.authenticated = True
-            st.success(f"Logged in as @{user.screen_name}")
-            return user.screen_name
-        except Exception as e:
-            st.error(f"Authentication failed: {e}")
-            return None
-
-    # Case 2: Callback from Twitter with oauth_verifier
-    elif "oauth_verifier" in st.query_params and "oauth_token" in st.query_params:
-        oauth_token = st.query_params["oauth_token"]
-        verifier = st.query_params["oauth_verifier"]
-        auth = tweepy.OAuth1UserHandler(
-            consumer_key, consumer_secret,
-            callback="http://localhost:8501/?auth=twitter"
-        )
-        # Set the request token manually using oauth_token from the redirect
-        auth.request_token = {
-            "oauth_token": oauth_token,
-            "oauth_token_secret": ""  # Secret isn’t needed for this step
-        }
-        try:
-            access_token, access_token_secret = auth.get_access_token(verifier)
-            st.session_state.access_token = access_token
-            st.session_state.access_token_secret = access_token_secret
-            api = tweepy.API(auth)
-            user = api.verify_credentials()
-            st.session_state.user_id = user.screen_name
-            st.session_state.authenticated = True
-            st.rerun()
-            return user.screen_name
-        except Exception as e:
-            st.error(f"Failed to get access token: {e}")
-            return None
-
-    # Case 3: Start authentication process
-    else:
-        auth = tweepy.OAuth1UserHandler(
-            consumer_key, consumer_secret,
-            callback="http://localhost:8501/?auth=twitter"
-        )
-        try:
-            url = auth.get_authorization_url()
-            st.session_state.request_token = auth.request_token  # Optional for debugging
-            st.write("Please authenticate with Twitter:")
-            st.markdown(f"[Click here to log in]({url})")
-            return None
-        except Exception as e:
-            st.error(f"Failed to get authorization URL: {e}")
-            return None
-
 def check_stripe_subscription(user_id):
     stripe.api_key = st.secrets["stripe"]["api_key"]
     try:
@@ -348,52 +303,6 @@ def check_stripe_subscription(user_id):
     except Exception as e:
         st.error(f"Stripe error: {e}")
         return False
-
-def main():
-
-    load_dotenv()
-
-    # Handle Twitter authentication
-    user_id = twitter_auth()
-
-    if not user_id:
-        user_id = "test_user"
-      #  return
-    #st.write(user_id)
-    # Load session state for this user
-    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
-    st.session_state.session_state = load_session_state(this_user_session_state_file)
-    #st.caption(f"Logged in as {user_id}")
-    # UI layout
-    with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
-        st.markdown("""
-           - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
-           - Real-Time Data Access
-           - Personality and Interaction Style
-           - Multimodal Capabilities
-           - Integration with X Platform
-           - API Flexibility
-           - Human-Thriving-Focused AI Development
-           """)
-    st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
-
-    with st.expander("About Coach", expanded=False):
-        coach = CoachProfile(user_id)
-        coach.coach_tab()
-
-    with st.expander("Give Me The Latest Health Science From Grok"):
-        give_me_the_latest_tab()
-
-    with st.expander("Talk to Coach", expanded=True):
-        if check_stripe_subscription(user_id):
-            dialogue_tab(user_id)  # Premium feature
-        else:
-            st.write("Subscribe to talk to Coach!")
-
-    with st.expander("Update My Health History"):
-        user_profile_tab(user_id)
-
-    show_history(user_id)
 
 
 # Main app function
@@ -457,6 +366,163 @@ def get_research_from_before_learning_cutoff(canned_searches):
         st.write(f"**{search_label}**")
         st.write(topic_response)
 
+def twitter_auth():
+    """
+    Complete Twitter/X OAuth authentication flow.
+    Returns authenticated username or None if not authenticated.
+    """
+    # Initialize session state variables
+    if 'auth_state' not in st.session_state:
+        st.session_state.auth_state = 'not_started'
+    if 'access_token' not in st.session_state:
+        st.session_state.access_token = None
+    if 'access_token_secret' not in st.session_state:
+        st.session_state.access_token_secret = None
+    if 'request_token' not in st.session_state:
+        st.session_state.request_token = None
+    if 'request_token_secret' not in st.session_state:
+        st.session_state.request_token_secret = None
+
+    consumer_key = st.secrets["twitter"]["consumer_key"]
+    consumer_secret = st.secrets["twitter"]["consumer_secret"]
+    environment = os.getenv("ENVIRONMENT")
+    print(f"Environment: {environment}")
+    environment = "dev"
+    if environment == "dev":
+        callback = "http://localhost:8501/"
+    else:
+        callback = "https://34.34.172.181.254/"
+    print(callback)
+    # Handle OAuth callback
+    if 'oauth_verifier' in st.query_params and 'oauth_token' in st.query_params:
+        try:
+            verifier = st.query_params['oauth_verifier']
+            oauth_token = st.query_params['oauth_token']
+
+            auth = tweepy.OAuth1UserHandler(
+                consumer_key,
+                consumer_secret,
+                callback=callback
+            )
+
+            auth.request_token = {
+                'oauth_token': oauth_token,
+                'oauth_token_secret': st.session_state.request_token_secret
+            }
+
+            access_token, access_token_secret = auth.get_access_token(verifier)
+            st.session_state.access_token = access_token
+            st.session_state.access_token_secret = access_token_secret
+            st.session_state.auth_state = 'authenticated'
+
+            # Test credentials
+            client = tweepy.Client(
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                access_token=access_token,
+                access_token_secret=access_token_secret
+            )
+
+            me = client.get_me()
+            st.success(f"Connected as: @{me.data.username}")
+            return me.data.username
+
+        except Exception as e:
+            st.error(f"Authentication Error: {str(e)}")
+            st.session_state.auth_state = 'error'
+            return None
+
+    # Show auth button if not authenticated
+    if st.session_state.auth_state != 'authenticated':
+        st.warning("Please connect your Twitter account to continue.")
+        if st.button("Connect Twitter Account"):
+            try:
+                auth = tweepy.OAuth1UserHandler(
+                    consumer_key,
+                    consumer_secret,
+                    callback=callback
+                )
+
+                auth_url = auth.get_authorization_url()
+
+                st.session_state.request_token = auth.request_token['oauth_token']
+                st.session_state.request_token_secret = auth.request_token['oauth_token_secret']
+                st.session_state.auth_state = 'awaiting_callback'
+
+                st.markdown(f"[Click here to authorize with Twitter]({auth_url})")
+
+            except Exception as e:
+                st.error(f"Error starting authentication: {str(e)}")
+                st.session_state.auth_state = 'error'
+        return None
+
+    # If already authenticated, verify and return username
+    if st.session_state.auth_state == 'authenticated':
+        try:
+            client = tweepy.Client(
+                consumer_key=consumer_key,
+                consumer_secret=consumer_secret,
+                access_token=st.session_state.access_token,
+                access_token_secret=st.session_state.access_token_secret
+            )
+            me = client.get_me()
+            return me.data.username
+        except Exception as e:
+            st.error(f"Error verifying credentials: {str(e)}")
+            st.session_state.auth_state = 'error'
+            return None
+
+    return None
+def main():
+    logging.basicConfig(level=logging.INFO)
+    load_dotenv()
+
+    user_id = twitter_auth()
+
+    if user_id:
+        st.write("---")
+        st.write(f"Welcome @{user_id}!")
+        # Rest of y
+
+    # Load session state for authenticated user
+    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
+    st.session_state.session_state = load_session_state(this_user_session_state_file)
+
+    st.write(user_id)
+    # Load session state for this user
+    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
+    st.session_state.session_state = load_session_state(this_user_session_state_file)
+    #st.caption(f"Logged in as {user_id}")
+    # UI layout
+    with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
+        st.markdown("""
+           - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
+           - Real-Time Data Access
+           - Personality and Interaction Style
+           - Multimodal Capabilities
+           - Integration with X Platform
+           - API Flexibility
+           - Human-Thriving-Focused AI Development
+           """)
+    st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
+
+    with st.expander("About Coach", expanded=False):
+        coach = CoachProfile(user_id)
+        coach.coach_tab()
+
+    with st.expander("Give Me The Latest Health Science From Grok"):
+        give_me_the_latest_tab()
+
+    with st.expander("Talk to Coach", expanded=True):
+        if check_stripe_subscription(user_id):
+            dialogue_tab(user_id)  # Premium feature
+        else:
+            st.write("Subscribe to talk to Coach!")
+
+    with st.expander("Update My Health History"):
+        user_profile_tab(user_id)
+
+    show_history(user_id)
 
 class CoachProfile:
 
