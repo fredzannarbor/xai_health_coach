@@ -476,33 +476,39 @@ def twitter_auth():
 def main():
     logging.basicConfig(level=logging.INFO)
     load_dotenv()
+    default_coach_attributes = CoachProfile.initialize_default_coach_attributes()
 
     user_id = twitter_auth()
 
     if user_id:
-        st.write("---")
         st.write(f"Welcome @{user_id}!")
-        # Rest of y
+        user_coach_file = f"{XAI_HEALTH_DIR}/{user_id}_coach_attributes.json"
+        if not os.path.exists(user_coach_file):
+            # Apply default attributes for new user
+            with open(user_coach_file, "w") as f:
+                json.dump({user_id: default_coach_attributes}, f, indent=4)
 
     # Load session state for authenticated user
     this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
     st.session_state.session_state = load_session_state(this_user_session_state_file)
 
-    st.write(user_id)
+  #  st.write(user_id)
     # Load session state for this user
     this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
     st.session_state.session_state = load_session_state(this_user_session_state_file)
     #st.caption(f"Logged in as {user_id}")
     # UI layout
-    with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=True):
+    with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=False):
         st.markdown("""
-           - Grok [explains](https://x.com/i/grok/share/8Ki9YkE5JiUUN5Gyg5d8XDuKo)
-           - Real-Time Data Access
-           - Personality and Interaction Style
-           - Multimodal Capabilities
-           - Integration with X Platform
-           - API Flexibility
-           - Human-Thriving-Focused AI Development
+           - What are the unique advantages of Grok's API? [Ask Grok](https://x.com/i/grok/share/VluBBLPMdWKSn0yeMWhOXX6xO)
+            - Per the xAI team...
+            - Hands-on ...
+               - Real-Time Data Access
+               - Personality and Interaction Style
+               - Multimodal Capabilities
+               - Integration with X Platform
+               - API Flexibility
+               - Human-Thriving-Focused AI Development
            """)
     st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
 
@@ -526,12 +532,12 @@ def main():
 
 class CoachProfile:
 
-    def __init__(self, user_id, selected_attributes=[], available_attributes_file_path=f"{XAI_HEALTH_DIR}/all_available_coach_attributes.json") -> None:
-
-        self.user_id = user_id
+    def __init__(self, user_id, selected_attributes=[],
+                available_attributes_file_path=f"{XAI_HEALTH_DIR}/all_available_coach_attributes.json") -> None:
+        self.user_id = user_id if user_id else "default"  # Use "default" if no user_id
         self.selected_attributes = selected_attributes
         self.available_attributes_file_path = available_attributes_file_path
-        self.coach_attributes = []
+        self.coach_attributes = {}  # Initialize as empty dict instead of list
         self.coach_attributes_file_path = f"{XAI_HEALTH_DIR}/{self.user_id}_coach_attributes.json"
 
     def coach_tab(self):
@@ -574,11 +580,18 @@ class CoachProfile:
         Displays a Streamlit multiselect UI to select specific attributes for the user.
         """
         options = list(self.all_available_attributes.keys())
-        current_coach_options = self.coach_attributes[self.user_id] if self.coach_attributes else []
-        selected_attributes = st.multiselect("Available Coach Attributes",
-                                             options=options,
-                                             default=current_coach_options,
-                                             key="coach_attributes_selector")
+
+        # Safely get current options with default fallback
+        current_coach_options = (self.coach_attributes.get(self.user_id, [])
+                                 if isinstance(self.coach_attributes, dict)
+                                 else [])
+
+        selected_attributes = st.multiselect(
+            "Available Coach Attributes",
+            options=options,
+            default=current_coach_options,
+            key="coach_attributes_selector"
+        )
 
         logging.info(f"Selected attributes: {selected_attributes}")
         if st.button("Save Selected Attributes"):
@@ -587,7 +600,25 @@ class CoachProfile:
             logging.info("Selected attributes saved.")
 
 
+    @staticmethod
+    def initialize_default_coach_attributes():
+        """
+        Initialize default Coach attributes for new users
+        """
+        default_attributes = {
+            "default": [
+                "loves-citations",
+                "no-bs",
+                "hard-core"
+            ]
+        }
 
+        # Create default coach attributes file if it doesn't exist
+        default_file_path = f"{XAI_HEALTH_DIR}/default_coach_attributes.json"
+        if not os.path.exists(default_file_path):
+            with open(default_file_path, "w") as f:
+                json.dump(default_attributes, f, indent=4)
+        return default_attributes["default"]
 
     def display_current_coach_personality(self):
         """
