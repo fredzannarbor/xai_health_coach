@@ -15,7 +15,7 @@ import tweepy
 from urllib.parse import parse_qs, urlparse
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 if "session_state" not in st.session_state:
     st.session_state.session_state = []
@@ -27,7 +27,7 @@ def setup_logging():
 
     # Create console handler
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(logging.INFO)
 
     # Create formatter
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
