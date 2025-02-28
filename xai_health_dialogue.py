@@ -1,5 +1,8 @@
 
 import logging
+import time
+from pathlib import Path
+
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -13,6 +16,9 @@ from urllib.parse import parse_qs, urlparse
 
 
 logging.basicConfig(level=logging.DEBUG)
+
+if "session_state" not in st.session_state:
+    st.session_state.session_state = []
 
 def setup_logging():
     logger = logging.getLogger('twitter_auth')
@@ -40,7 +46,7 @@ load_dotenv()
 
 XAI_HEALTH_DIR = os.getenv("XAI_HEALTH_DIR")
 print(XAI_HEALTH_DIR)
-st.title("xAI Health Coach")
+st.title("xAI-powered Health Coach")
 def get_user_id(dummy_user="user_1"):
     if dummy_user:
         return dummy_user
@@ -60,44 +66,126 @@ client = OpenAI(
 )
 
 def dialogue_tab(user_id):
+    def dialogue_tab(user_id):
+        if 'user_id' not in st.session_state:
+            st.session_state.user_id = user_id
+
+        # Rest of your dialogue_tab code...
+
     get_system_message(user_id)
     user_provides_health_update(user_id)
     review_your_relationship_with_user(user_id)
-
 
 def user_profile_tab(user_id):
     manage_user_profile(user_id)
 
 
+def ensure_user_directory(user_id):
+    """
+    Ensures that the user directory exists and creates it if it doesn't.
+    Returns the path to the user directory.
+    """
+    # Get the base directory (where your script is located)
+    base_dir = Path(__file__).parent
+
+    # Create a 'users' directory if it doesn't exist
+    users_dir = base_dir / 'userdata'
+    users_dir.mkdir(exist_ok=True)
+
+    # Create user-specific directory
+    user_dir = users_dir / str(user_id)
+    user_dir.mkdir(exist_ok=True)
+
+    return user_dir
+
 # Function to save session state
-def save_session_state(state):
-    filename = st.session_state.user_id
-    filepath = os.path.join(
-        XAI_HEALTH_DIR, filename, "session_state.json")
+def save_session_state(session_state):
+    """
+    Saves the session state to a JSON file in the user's directory
+    """
+    if 'user_id' not in st.session_state or not st.session_state.user_id:
+        st.error("User ID not found. Please authenticate first.")
+        return
 
-    print(f"Saving session state: {state}")  # Print before saving
-    with open(filepath, "w") as file:
-        json.dump(state, file, indent=4)  # Use indent for readability
+    try:
+        # Get user directory
+        user_dir = ensure_user_directory(st.session_state.user_id)
+
+        # Create the full path for the session state file
+        session_file = user_dir / 'session_state.json'
+
+        # Save the session state directly as a list (no conversion to dict needed)
+        with open(session_file, 'w', encoding='utf-8') as f:
+            json.dump(session_state, f, indent=4)
+
+        logging.debug(f"Session state saved to {session_file}")
+
+    except Exception as e:
+        logging.error(f"Error saving session state: {str(e)}")
+        st.error(f"Error saving session state: {str(e)}")
 
 
-def load_session_state(filename):
-    filepath = os.path.join(
-        XAI_HEALTH_DIR, filename
-    )  # Safer path construction
-    if os.path.exists(filepath):
-        print(f"Loading session state from {filepath}")  # Print full path!
-        try:
-            with open(filepath, "r") as file:
-                return json.load(file)
-        except json.JSONDecodeError as e:  # Catch JSON errors!
-            print(f"Error decoding JSON: {e}")
-            return []  # return empty list on decode error
-    else:
-        print(f"Session state file {filepath} not found.")  # Print full path!
-    return []
+def load_session_state(user_id):
+    """
+    Loads the session state from a JSON file in the user's directory
+    Returns a list (empty if no data found)
+    """
+    try:
+        # Get user directory
+        user_dir = ensure_user_directory(user_id)
+        session_file = user_dir / 'session_state.json'
 
+        if session_file.exists():
+            with open(session_file, 'r', encoding='utf-8') as f:
+                session_data = json.load(f)
+                return session_data if isinstance(session_data, list) else []
+        else:
+            logging.debug(f"No existing session state found for user {user_id}")
+            return []
+
+    except Exception as e:
+        logging.error(f"Error loading session state: {str(e)}")
+        return []
+
+def cleanup_old_sessions(max_age_days=90):
+    """
+    Removes session files older than max_age_days
+    """
+    try:
+        base_dir = Path(__file__).parent
+        users_dir = base_dir / 'users'
+
+        if not users_dir.exists():
+            return
+
+        current_time = time.time()
+        max_age_seconds = max_age_days * 24 * 60 * 60
+
+        for user_dir in users_dir.iterdir():
+            if user_dir.is_dir():
+                session_file = user_dir / 'session_state.json'
+                if session_file.exists():
+                    file_age = current_time - session_file.stat().st_mtime
+                    if file_age > max_age_seconds:
+                        session_file.unlink()
+                        logging.info(f"Removed old session file: {session_file}")
+
+                # Remove empty user directories
+                if not any(user_dir.iterdir()):
+                    user_dir.rmdir()
+                    logging.info(f"Removed empty user directory: {user_dir}")
+
+    except Exception as e:
+        logging.error(f"Error during session cleanup: {str(e)}")
 
 def user_provides_health_update(user_id):
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = user_id
+
+    if st.session_state.user_id is None:
+        st.error("Please authenticate first")
+        return
+
     # User input for health update
     with st.form("health_update_form"):
         user_input = st.text_area(
@@ -161,22 +249,55 @@ def user_provides_health_update(user_id):
 # Display conversation history in reverse chronological order
 def show_history(user_id):
     if st.session_state.session_state:
-        with st.expander("Show Conversation History", expanded=False):
+        with st.expander("💬 Conversation History", expanded=False):
+            # Custom CSS to reduce spacing
+            st.markdown("""
+                <style>
+                    .stChatMessage {
+                        padding: 0.5rem !important;
+                        margin-bottom: 0.5rem !important;
+                    }
+                    .stMarkdown {
+                        margin-bottom: 0px !important;
+                    }
+                    hr {
+                        margin: 0.2rem 0 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
+            # Sort messages by timestamp in reverse chronological order
+            sorted_messages = sorted(
+                st.session_state.session_state,
+                key=lambda x: datetime.strptime(x["timestamp"], "%Y-%m-%d %H:%M:%S"),
+                reverse=True
+            )
+
             # Group messages by date
-            daily_messages = {}
-            for message in st.session_state.session_state:
-                date = message["timestamp"].split(" ")[0]  # Extract date from timestamp
-                if date not in daily_messages:
-                    daily_messages[date] = []
-                daily_messages[date].append(message)
+            current_date = None
+            for message in sorted_messages:
+                message_date = message["timestamp"].split()[0]
 
-            # Display messages grouped by day in expanders
-            for date, messages in sorted(daily_messages.items(), reverse=True):
-                for message in messages:
-                    with st.chat_message(message["role"]):
-                        st.markdown(f"**{message['timestamp']}**")
-                        st.json(message, expanded=False)
+                # Add date separator if it's a new date
+                if message_date != current_date:
+                    current_date = message_date
+                    st.markdown(f"#### {message_date}")
 
+                # Format the time
+                message_time = message["timestamp"].split()[1]
+
+                # Display the message
+                with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🤖"):
+                    st.write(f"{message_time}")
+                    st.write(message["content"])
+                st.markdown("<hr>", unsafe_allow_html=True)
+
+
+def initialize_user(user_id):
+    """Initialize a new user's data structure"""
+    user_dir = ensure_user_directory(user_id)
+    st.session_state.user_id = user_id
+    load_session_state(user_id)  # Load any existing session data
 
 def initialize_default_user():
     """
@@ -296,9 +417,9 @@ def check_stripe_subscription(user_id):
         if subscriptions.data and subscriptions.data[0].status == "active":
             return True
         else:
-            st.write("Premium features require a subscription.")
-            st.markdown(f"[Subscribe here]({st.secrets['stripe']['subscription_link']})")
-            return False
+            st.warning("Free during alpha test only. In future, subscriptions will be required.")
+            #st.markdown(f"[Test subscription flow here.]({st.secrets['stripe']['subscription_link']})")
+            return True
     except Exception as e:
         st.error(f"Stripe error: {e}")
         return False
@@ -324,7 +445,7 @@ def give_me_the_latest_tab():
 "Neurofeedback Therapy": "",
 "Sleep Quality and Anxiety": "",
 "Mindfulness Meditation": "",
-"Nature Exposure Therapy": "",
+"Nature Exposure Therapy": "https://grok.com/share/bGVnYWN5_1dd7249a-028b-4e2f-b067-241b5ebdda41",
 "Social Media Impact": ""
 "Time-Restricted Eating": "",
 "Probiotics for Gut Health": "",
@@ -367,32 +488,90 @@ def get_research_from_before_learning_cutoff(canned_searches):
 
 def twitter_auth():
     """
-    Complete Twitter/X OAuth authentication flow.
+    Complete Twitter/X OAuth authentication flow with improved error handling,
+    token validation, and session management.
     Returns authenticated username or None if not authenticated.
     """
-    # Initialize session state variables
-    if 'auth_state' not in st.session_state:
-        st.session_state.auth_state = 'not_started'
-    if 'access_token' not in st.session_state:
-        st.session_state.access_token = None
-    if 'access_token_secret' not in st.session_state:
-        st.session_state.access_token_secret = None
-    if 'request_token' not in st.session_state:
-        st.session_state.request_token = None
-    if 'request_token_secret' not in st.session_state:
-        st.session_state.request_token_secret = None
+    logging.debug("Starting twitter_auth")
+    logging.debug("Current session state: %s", st.session_state)
+    logging.debug("Current query params: %s", st.query_params)
 
+    def clear_auth_session():
+        """Clear all authentication-related session state variables"""
+        auth_keys = ['auth_state', 'access_token',
+                     'access_token_secret',
+                     'request_token',
+                     'request_token_secret']
+        for key in auth_keys:
+            if key in st.session_state:
+                del st.session_state[key]
+        logging.debug("Auth session cleared")
+
+
+    def initialize_session_state():
+        """Initialize all required session state variables"""
+        if 'auth_state' not in st.session_state:
+            st.session_state.auth_state = 'not_started'
+        if 'access_token' not in st.session_state:
+            st.session_state.access_token = None
+        if 'access_token_secret' not in st.session_state:
+            st.session_state.access_token_secret = None
+        if 'request_token' not in st.session_state:
+            st.session_state.request_token = None
+        if 'request_token_secret' not in st.session_state:
+            st.session_state.request_token_secret = None
+        if 'user_id' not in st.session_state:
+            st.session_state.user_id = None
+
+    def validate_tokens():
+        """Validate current access tokens"""
+        if (st.session_state.access_token and
+                st.session_state.access_token_secret):
+            try:
+                client = tweepy.Client(
+                    consumer_key=consumer_key,
+                    consumer_secret=consumer_secret,
+                    access_token=st.session_state.access_token,
+                    access_token_secret=st.session_state.access_token_secret
+                )
+                me = client.get_me()
+                logging.debug("Tokens validated successfully")
+                return True
+            except Exception as e:
+                logging.error("Token validation failed: %s", str(e))
+                clear_auth_session()
+                return False
+        return False
+
+    def refresh_twitter_auth():
+        """Refresh authentication by clearing tokens and restarting auth flow"""
+        clear_auth_session()
+        try:
+            auth = tweepy.OAuth1UserHandler(
+                consumer_key,
+                consumer_secret,
+                callback=callback
+            )
+            auth_url = auth.get_authorization_url()
+            st.session_state.request_token = auth.request_token['oauth_token']
+            st.session_state.request_token_secret = auth.request_token['oauth_token_secret']
+            st.session_state.auth_state = 'awaiting_callback'
+            logging.debug("Auth refresh successful, new URL generated")
+            return auth_url
+        except Exception as e:
+            logging.error("Auth refresh failed: %s", str(e))
+            return None
+
+    # Initialize session state
+    initialize_session_state()
+
+    # Get configuration
     consumer_key = st.secrets["twitter"]["consumer_key"]
     consumer_secret = st.secrets["twitter"]["consumer_secret"]
-    environment = os.getenv("ENVIRONMENT")
-    print(f"Environment: {environment}")
-    environment = "dev"
-    callback = None
-    if environment == "dev":
-        callback = "http://localhost:8501/"
-    else:
-        callback = "https://34.172.181.254:8501/"
-    print(callback)
+    environment = os.getenv("ENVIRONMENT", "dev")
+    callback = "http://localhost:8501/" if environment == "dev" else "https://34.172.181.254:8501/"
+    logging.debug(f"Environment: {environment}, Callback: {callback}")
+
     # Handle OAuth callback
     if 'oauth_verifier' in st.query_params and 'oauth_token' in st.query_params:
         try:
@@ -424,100 +603,114 @@ def twitter_auth():
             )
 
             me = client.get_me()
-            st.success(f"Connected as: @{me.data.username}")
+            st.success(f"Welcome @{me.data.username}")
+            st.session_state.user_id = me.data.username  # Store the user ID
+            logging.info(f"Authentication successful for user @{me.data.username}")
             return me.data.username
 
         except Exception as e:
+            logging.error(f"Authentication Error: {str(e)}")
+            clear_auth_session()
             st.error(f"Authentication Error: {str(e)}")
-            st.session_state.auth_state = 'error'
             return None
+
+    # If already authenticated, verify tokens
+    if st.session_state.auth_state == 'authenticated':
+        if validate_tokens():
+            try:
+                client = tweepy.Client(
+                    consumer_key=consumer_key,
+                    consumer_secret=consumer_secret,
+                    access_token=st.session_state.access_token,
+                    access_token_secret=st.session_state.access_token_secret
+                )
+                me = client.get_me()
+                return me.data.username
+            except Exception as e:
+                logging.error(f"Error verifying credentials: {str(e)}")
+                st.error("Session expired. Please authenticate again.")
+                auth_url = refresh_twitter_auth()
+                if auth_url:
+                    st.markdown(f"[Click here to re-authorize with Twitter]({auth_url})")
+                return None
 
     # Show auth button if not authenticated
     if st.session_state.auth_state != 'authenticated':
         st.warning("Please connect your Twitter account to continue.")
         if st.button("Connect Twitter Account"):
             try:
-                auth = tweepy.OAuth1UserHandler(
-                    consumer_key,
-                    consumer_secret,
-                    callback=callback
-                )
-
-                auth_url = auth.get_authorization_url()
-
-                st.session_state.request_token = auth.request_token['oauth_token']
-                st.session_state.request_token_secret = auth.request_token['oauth_token_secret']
-                st.session_state.auth_state = 'awaiting_callback'
-
-                st.markdown(f"[Click here to authorize with Twitter]({auth_url})")
-
+                auth_url = refresh_twitter_auth()
+                if auth_url:
+                    st.markdown(f"[Click here to authorize with Twitter]({auth_url})")
+                else:
+                    st.error("Failed to start authentication process")
             except Exception as e:
+                logging.error(f"Error starting authentication: {str(e)}")
                 st.error(f"Error starting authentication: {str(e)}")
                 st.session_state.auth_state = 'error'
         return None
 
-    # If already authenticated, verify and return username
-    if st.session_state.auth_state == 'authenticated':
-        try:
-            client = tweepy.Client(
-                consumer_key=consumer_key,
-                consumer_secret=consumer_secret,
-                access_token=st.session_state.access_token,
-                access_token_secret=st.session_state.access_token_secret
-            )
-            me = client.get_me()
-            return me.data.username
-        except Exception as e:
-            st.error(f"Error verifying credentials: {str(e)}")
-            st.session_state.auth_state = 'error'
-            return None
-
     return None
+
 def main():
     logging.basicConfig(level=logging.INFO)
     load_dotenv()
+
+    # Initialize session states
+    if 'session_state' not in st.session_state:
+        st.session_state.session_state = []
+
+    if 'last_cleanup' not in st.session_state:
+        st.session_state.last_cleanup = time.time()
+        cleanup_old_sessions()
+    elif time.time() - st.session_state.last_cleanup > 86400:  # 24 hours
+        cleanup_old_sessions()
+        st.session_state.last_cleanup = time.time()
+
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = None
+
+    # Get default coach attributes
     default_coach_attributes = CoachProfile.initialize_default_coach_attributes()
 
+    # Authenticate user
     user_id = twitter_auth()
 
     if user_id:
-        st.write(f"Welcome @{user_id}!")
-        user_coach_file = f"{XAI_HEALTH_DIR}/{user_id}_coach_attributes.json"
+        # Initialize user and show authentication toast
+        initialize_user(user_id)
+        st.toast(f"Authenticated as @{user_id}!")
+
+        # Handle coach attributes file
+        user_coach_file = os.path.join(XAI_HEALTH_DIR, f"{user_id}_coach_attributes.json")
         if not os.path.exists(user_coach_file):
-            # Apply default attributes for new user
             with open(user_coach_file, "w") as f:
                 json.dump({user_id: default_coach_attributes}, f, indent=4)
 
-    # Load session state for authenticated user
-    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
-    st.session_state.session_state = load_session_state(this_user_session_state_file)
+        # Load session state for authenticated user
+        session_state_file = os.path.join(XAI_HEALTH_DIR, "userdata", f"{user_id}_session_state.json")
+        loaded_state = load_session_state(session_state_file)
+        if loaded_state is not None:  # Only update if we got valid data
+            st.session_state.session_state = loaded_state
 
-  #  st.write(user_id)
-    # Load session state for this user
-    this_user_session_state_file = f"{XAI_HEALTH_DIR}/userdata/{user_id}_session_state.json"
-    st.session_state.session_state = load_session_state(this_user_session_state_file)
-    #st.caption(f"Logged in as {user_id}")
     # UI layout
+    st.image(os.path.join(XAI_HEALTH_DIR, "resources", "coach_cartoon.jpg"), width=300)
+
     with st.expander("Showcasing the Unique Advantages of the xAI API", expanded=False):
         st.markdown("""
-           - What are the unique advantages of Grok's API? [Ask Grok](https://x.com/i/grok/share/VluBBLPMdWKSn0yeMWhOXX6xO)
-            - Per the xAI team...
-            - Hands-on ...
-               - Real-Time Data Access
-               - Personality and Interaction Style
-               - Multimodal Capabilities
-               - Integration with X Platform
-               - API Flexibility
-               - Human-Thriving-Focused AI Development
+        - What are the unique advantages of Grok's API? 
+            - [Ask Grok](https://x.com/i/grok/share/VluBBLPMdWKSn0yeMWhOXX6xO)
+            - [Roll-out blog post...](https://x.ai/blog/api)
+            - [API home page](https://x.ai/api)
+            - [Docs](https://docs.x.ai/docs/overview)
+        - See for yourself why the Grok API is better ...
+           - Real-Time Data Access
+           - Personality and Interaction Style
+           - Multimodal Capabilities
+           - Integration with X Platform
+           - API Flexibility
+           - Human-Thriving-Focused AI Development
            """)
-    st.image(f"{XAI_HEALTH_DIR}/resources/coach_cartoon.jpg", width=300)
-
-    with st.expander("About Coach", expanded=False):
-        coach = CoachProfile(user_id)
-        coach.coach_tab()
-
-    with st.expander("Give Me The Latest Health Science From Grok"):
-        give_me_the_latest_tab()
 
     with st.expander("Talk to Coach", expanded=True):
         if check_stripe_subscription(user_id):
@@ -525,10 +718,19 @@ def main():
         else:
             st.write("Subscribe to talk to Coach!")
 
+    show_history(user_id)
+
+    with st.expander("Give Me The Latest Health Science From Grok", expanded=True):
+        give_me_the_latest_tab()
+
     with st.expander("Update My Health History"):
         user_profile_tab(user_id)
 
-    show_history(user_id)
+    with st.expander("About Coach", expanded=True):
+        coach = CoachProfile(user_id)
+        coach.coach_tab()
+
+
 
 class CoachProfile:
 
