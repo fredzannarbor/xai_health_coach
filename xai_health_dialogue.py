@@ -66,11 +66,8 @@ client = OpenAI(
 )
 
 def dialogue_tab(user_id):
-    def dialogue_tab(user_id):
-        if 'user_id' not in st.session_state:
-            st.session_state.user_id = user_id
-
-        # Rest of your dialogue_tab code...
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = user_id
 
     get_system_message(user_id)
     user_provides_health_update(user_id)
@@ -201,11 +198,15 @@ def user_provides_health_update(user_id):
             st.session_state.session_state.append(
                 {"role": "user", "content": user_input, "timestamp": current_time}
             )
-
+            st.write(f"ss User id: {st.session_state.user_id}")
+            st.write(f"uswr id: {st.session_state.user_id}")
+            coach_info = get_system_message(st.session_state.user_id)
+            st.write(f"Coach info: {coach_info} ")
             # Prepare messages for OpenAI, including conversation history
             messages = [
-                dict(role="system", content=get_system_message())
+                dict(role="system", content=coach_info)
             ] + st.session_state.session_state
+            st.write(f"messages: {messages}")
 
             # Call OpenAI API
             response = client.chat.completions.create(
@@ -240,11 +241,6 @@ def user_provides_health_update(user_id):
                 st.write("Actionable Recommendations:")
                 for rec in recommendations:
                     st.write(rec)
-
-
-
-
-
 
 # Display conversation history in reverse chronological order
 def show_history(user_id):
@@ -366,7 +362,7 @@ def manage_user_profile(user_id):
 
     st.caption(f"User ID: {user_id}")
 
-def get_system_message(user_id="user_1"):
+def get_system_message(user_id):
     base_system_message = "You are a personal health assistant providing feedback and recommendations based on user health updates. Your advice is tailored specifically for the user.  In creating the advice you consider all the information in his user profile and his conversation history.\n\n"
     #personality_attributes = load_coach_personality(user_id)
     coach_attributes_file = f"{XAI_HEALTH_DIR}/{user_id}_coach_attributes.json"
@@ -380,6 +376,7 @@ def get_system_message(user_id="user_1"):
             all_available_attributes = coach.load_all_available_attributes()
             coach_additional_instructions += f"{all_available_attributes[attribute]}\n"
             #st.write(f"added additional instructions: {additional_instructions}")
+        st.write(f"coach_additional_instructions: {coach_additional_instructions}")
         return f"{base_system_message}\n{coach_additional_instructions}"
     else:
         st.error(f"No coach attributes file found at {coach_attributes_file}")
@@ -417,7 +414,7 @@ def check_stripe_subscription(user_id):
         if subscriptions.data and subscriptions.data[0].status == "active":
             return True
         else:
-            st.warning("Free during alpha test only. In future, subscriptions will be required.")
+            st.warning("Free during alpha test. In future, subscriptions will be required.")
             #st.markdown(f"[Test subscription flow here.]({st.secrets['stripe']['subscription_link']})")
             return True
     except Exception as e:
