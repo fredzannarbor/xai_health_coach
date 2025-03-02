@@ -1,6 +1,5 @@
 
-# FIX on form submit, authentication becomes invalid (401 error at top of page)
-# FIX update & save health profile
+ # TODO ensure that health profile is being incorporated in all prompts
 
 import logging
 import time
@@ -15,18 +14,21 @@ from openai import OpenAI
 import stripe
 import tweepy
 
-from urllib.parse import parse_qs, urlparse
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 def setup_logging():
     logger = logging.getLogger('twitter_auth')
     logger.setLevel(logging.DEBUG)
     ch = logging.StreamHandler()
+    fh = logging.FileHandler('twitter_auth.log')  # Log to a file
+    fh.setLevel(logging.INFO)
     ch.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     ch.setFormatter(formatter)
+    fh.setFormatter(formatter)
     logger.addHandler(ch)
+    logger.addHandler(fh)
     return logger
 
 logger = setup_logging()
@@ -38,17 +40,16 @@ XAI_HEALTH_DIR = os.getenv("XAI_HEALTH_DIR")
 print(XAI_HEALTH_DIR)
 st.title("xAI-powered Health Coach")
 
-def get_user_id(dummy_user="user_1"):
-    if dummy_user:
-        return dummy_user
-    else:
-        return st.session_state.get('user_id')
+
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
-# Configuration for OpenAI API
 XAI_API_KEY = os.getenv("XAI_API_KEY", "your_api_key_here")
 BASE_URL = "https://api.x.ai/v1"
+
+if not XAI_API_KEY or not XAI_API_KEY.startswith('xai-'):
+    raise ValueError("Invalid API key format")
+
 
 client = OpenAI(
     api_key=XAI_API_KEY,
@@ -58,9 +59,10 @@ client = OpenAI(
 def dialogue_tab(user_id):
     if not st.session_state.get('user_id'):
         st.session_state.user_id = user_id
+    st.info(f"Authenticated user: {user_id}")
     get_system_message(user_id)
     user_provides_health_update(user_id)
-    st.info(f"Authenticated user: {user_id}")
+
     review_your_relationship_with_user(user_id)
 
 def user_profile_tab(user_id):
@@ -366,13 +368,26 @@ def twitter_auth():
                     access_token_secret=st.session_state.access_token_secret
                 )
                 me = client.get_me()
-                logging.debug("Tokens validated successfully")
+                logging.info("Tokens validated successfully: user=%s", me.data.username)
                 return True
             except tweepy.TweepyException as e:
-                logging.error(f"Token validation failed: {str(e)}")
-                clear_auth_session()
+                logging.error("Token validation failed: %s", str(e))
+                # Try to refresh immediately
+                auth_url = refresh_twitter_auth()
+                if auth_url:
+                    st.markdown(f"Please re-authorize: [Click here]({auth_url})")
                 return False
         return False
+
+    def ensure_valid_auth():
+        if not validate_tokens():
+            logging.info("Invalid or expired tokens, initiating refresh")
+            auth_url = refresh_twitter_auth()
+            if auth_url:
+                st.markdown(f"Please re-authorize: [Click here]({auth_url})")
+                st.stop()  # Stop execution until reauthorization
+            return False
+        return True
 
     def refresh_twitter_auth():
         clear_auth_session()
@@ -382,10 +397,10 @@ def twitter_auth():
             st.session_state.request_token = auth.request_token['oauth_token']
             st.session_state.request_token_secret = auth.request_token['oauth_token_secret']
             st.session_state.auth_state = 'awaiting_callback'
-            logging.debug("Auth refresh successful, new URL generated")
+            logging.info("Auth refresh successful, URL generated: %s", auth_url)
             return auth_url
         except Exception as e:
-            logging.error(f"Auth refresh failed: {str(e)}")
+            logging.error("Auth refresh failed: %s", str(e))
             return None
 
     initialize_session_state()
@@ -394,8 +409,9 @@ def twitter_auth():
     consumer_secret = st.secrets["twitter"]["consumer_secret"]
     environment = os.getenv("ENVIRONMENT", "dev")
     callback = "http://localhost:8501" if environment == "dev" else "http://34.172.181.254:8501/"
-    logging.debug(f"Environment: {environment}, Callback: {callback}")
+    logging.debug("Environment: %s, Callback: %s", environment, callback)
 
+    # Handle callback from Twitter
     if 'oauth_verifier' in st.query_params and 'oauth_token' in st.query_params:
         try:
             verifier = st.query_params['oauth_verifier']
@@ -413,23 +429,31 @@ def twitter_auth():
                                    access_token=access_token, access_token_secret=access_token_secret)
             me = client.get_me()
             st.session_state.user_id = me.data.username
-            logging.info(f"Authentication successful for user @{me.data.username}")
+            logging.info("Authentication successful: user=%s, access_token=%s", me.data.username, access_token[:10] + "...")
             save_session_state(st.session_state.session_state)
+            # Optional: Display success in UI
+            #st.success(f"Authenticated as @{me.data.username}")
             return me.data.username
         except tweepy.TweepyException as e:
-            logging.error(f"Authentication Error: {str(e)}")
+            logging.error("Authentication error: %s", str(e))
+            # st.error(f"Authentication Error: {str(e)}")  # Already present, just ensuring visibility
             clear_auth_session()
-            st.error(f"Authentication Error: {str(e)}")
             return None
 
+    # Check if already authenticated
     if st.session_state.auth_state == 'authenticated' and validate_tokens():
-        return st.session_state.user_id
+        if ensure_valid_auth():  # Add this line
+            logging.info("Using existing authenticated session for user=%s", st.session_state.user_id)
+            return st.session_state.user_id
 
+    # Initiate authentication
     if st.button("You must connect your X account to Twitter to continue."):
         auth_url = refresh_twitter_auth()
         if auth_url:
+            logging.info("Prompting user to authorize at: %s", auth_url)
             st.markdown(f"[Click here to authorize with Twitter]({auth_url})")
         else:
+            logging.error("Failed to generate auth URL")
             st.error("Failed to start authentication process")
     return None
 
