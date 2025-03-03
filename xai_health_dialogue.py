@@ -40,8 +40,6 @@ XAI_HEALTH_DIR = os.getenv("XAI_HEALTH_DIR")
 print(XAI_HEALTH_DIR)
 st.title("xAI-powered Health Coach")
 
-
-
 ENVIRONMENT = os.getenv("ENVIRONMENT", "dev")
 
 XAI_API_KEY = os.getenv("XAI_API_KEY", "your_api_key_here")
