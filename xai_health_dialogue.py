@@ -272,8 +272,8 @@ def manage_user_profile(user_id):
     else:
         with open(profile_filename, "r") as file:
             profile = json.load(file)
-        edit_profile = st.radio("Update?", ["Yes", "No"], horizontal=True)
-        if edit_profile == "Yes" and st.session_state.auth_state == 'authenticated':
+        edit_profile = "Yes" # st.radio("Update?", ["Yes", "No"], horizontal=True)
+        if edit_profile == "Yes" and st.session_state.get('auth_state') == 'authenticated':
             with st.form("edit_profile"):
                 profile_text = st.text_area("Update", profile.get("profile_text", ""), height=300,
                                             help="Update your health history here. Free text, any format.")
@@ -480,6 +480,10 @@ def main():
     logging.basicConfig(level=logging.INFO)
     load_dotenv()
 
+    # Add this with your other session state initializations
+    if 'auth_state' not in st.session_state:
+        st.session_state.auth_state = 'not_started'
+
     if 'session_state' not in st.session_state:
         st.session_state.session_state = []
     if 'user_id' not in st.session_state:
@@ -531,6 +535,7 @@ def main():
            - [Easy "drop-in" integration with other APIs](https://github.com/fredzannarbor/xai_health_coach/blob/main/xai_health_dialogue.py#L321-333)    
            """)
 
+
     with st.expander("Check-In: My Health History", expanded=True):
         user_profile_tab(current_user_id)
 
@@ -544,8 +549,6 @@ def main():
 
     with st.expander("Give Me The Latest Health Science From Grok", expanded=True):
         give_me_the_latest_tab()
-
-
 
     with st.expander("About Coach", expanded=True):
         if current_user_id:
