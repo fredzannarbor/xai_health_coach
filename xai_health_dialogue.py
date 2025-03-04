@@ -60,7 +60,7 @@ def dialogue_tab(user_id):
 
     get_system_message(user_id)
     user_provides_health_update(user_id)
-    st.caption(f"Authenticated user: {user_id}")
+    st.caption(f"User ID: {user_id}")
     review_your_relationship_with_user(user_id)
 
 def user_profile_tab(user_id):
@@ -263,7 +263,7 @@ def manage_user_profile(user_id):
         st.warning("No profile found for this user.")
         with st.form("create_profile"):
             st.subheader("Create a New Profile")
-            profile_text = st.text_area("Enter your profile information here:", height=300)
+            profile_text = st.text_area("Enter your profile information here:", height=300, help="Free text, any format.")
             submitted = st.form_submit_button("Create Profile")
             if submitted:
                 with open(profile_filename, "w") as file:
@@ -272,8 +272,8 @@ def manage_user_profile(user_id):
     else:
         with open(profile_filename, "r") as file:
             profile = json.load(file)
-        edit_profile = st.radio("Update?", ["No", "Yes"], horizontal=True)
-        if edit_profile == "Yes":
+        edit_profile = st.radio("Update?", ["Yes", "No"], horizontal=True)
+        if edit_profile == "Yes" and st.session_state.auth_state == 'authenticated':
             with st.form("edit_profile"):
                 profile_text = st.text_area("Update", profile.get("profile_text", ""), height=300,
                                             help="Update your health history here. Free text, any format.")
@@ -531,7 +531,10 @@ def main():
            - [Easy "drop-in" integration with other APIs](https://github.com/fredzannarbor/xai_health_coach/blob/main/xai_health_dialogue.py#L321-333)    
            """)
 
-    with st.expander("Talk to Coach", expanded=True):
+    with st.expander("Check-In: My Health History", expanded=True):
+        user_profile_tab(current_user_id)
+
+    with st.expander("Visit with Coach", expanded=True):
         if check_stripe_subscription(current_user_id):
             dialogue_tab(current_user_id)
         else:
@@ -542,8 +545,7 @@ def main():
     with st.expander("Give Me The Latest Health Science From Grok", expanded=True):
         give_me_the_latest_tab()
 
-    with st.expander("Update My Health History"):
-        user_profile_tab(current_user_id)
+
 
     with st.expander("About Coach", expanded=True):
         if current_user_id:
