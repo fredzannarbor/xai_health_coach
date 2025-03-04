@@ -57,10 +57,10 @@ client = OpenAI(
 def dialogue_tab(user_id):
     if not st.session_state.get('user_id'):
         st.session_state.user_id = user_id
-    st.info(f"Authenticated user: {user_id}")
+
     get_system_message(user_id)
     user_provides_health_update(user_id)
-
+    st.caption(f"Authenticated user: {user_id}")
     review_your_relationship_with_user(user_id)
 
 def user_profile_tab(user_id):
@@ -500,13 +500,14 @@ def main():
             - [Roll-out blog post...](https://x.ai/blog/api)
             - [API home page](https://x.ai/api)
             - [Docs](https://docs.x.ai/docs/overview)
-        - See for yourself why the Grok API is better ...
-           - Real-Time Data Access
-           - Personality and Interaction Style
-           - Multimodal Capabilities
-           - Integration with X Platform
-           - API Flexibility
-           - Human-Thriving-Focused AI Development
+        - Demonstrated in Health Coach:
+           - Real-time research updates, e.g. ["Intentional health"](https://grok.com/share/72297e01-7fbb-49f8-8452-3b013d90d0ad)
+           - Fun, configurable personalities: "no-bs", "moar-fish", "sexy-time"
+           - Persistence and self-reflection
+           - Alignment with **human thriving**, not "safety"
+           - Multimodal capabilities _(to come)_
+           - Grok 3 Deep Search, Think _(to come)_
+           - [Easy "drop-in" integration with other APIs](https://github.com/fredzannarbor/xai_health_coach/blob/main/xai_health_dialogue.py#L321-333)    
            """)
 
     with st.expander("Talk to Coach", expanded=True):
@@ -525,7 +526,7 @@ def main():
 
     with st.expander("About Coach", expanded=True):
         if current_user_id:
-            st.info(f"Authenticated as @{current_user_id}!")
+            #st.info(f"Authenticated as @{current_user_id}!")
             coach = CoachProfile(current_user_id)
             coach.coach_tab()
         else:
