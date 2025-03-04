@@ -69,10 +69,31 @@ def user_profile_tab(user_id):
 def ensure_user_directory(user_id):
     base_dir = Path(__file__).parent
     users_dir = base_dir / 'userdata'
-    users_dir.mkdir(exist_ok=True)
+
+    # Create with specific permissions
+    users_dir.mkdir(mode=0o755, exist_ok=True)
+
     user_dir = users_dir / str(user_id)
-    user_dir.mkdir(exist_ok=True)
+    user_dir.mkdir(mode=0o755, exist_ok=True)
+
+    # Ensure proper ownership if running as root
+    if ENVIRONMENT == "production":
+        app_user = 'wfzimmerman'
+    elif ENVIRONMENT == "dev":
+        app_user = 'fred'
+    else:
+        app_user = 'root'
+    try:
+        import pwd
+        # Change to your app's user
+        uid = pwd.getpwnam(app_user).pw_uid
+        gid = pwd.getpwnam(app_user).pw_gid
+        os.chown(str(user_dir), uid, gid)
+    except (ImportError, KeyError, PermissionError):
+        logging.warning("Could not set directory ownership")
+
     return user_dir
+
 
 def save_session_state(session_state):
     if 'user_id' not in st.session_state or not st.session_state.user_id:
@@ -303,7 +324,7 @@ def check_stripe_subscription(user_id):
         if subscriptions.data and subscriptions.data[0].status == "active":
             return True
         else:
-            st.warning("Free during alpha test. In future, subscriptions will be required.")
+            st.warning("Free during alpha test only.")
             return True
     except Exception as e:
         st.error(f"Stripe error: {e}")
