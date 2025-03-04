@@ -176,7 +176,7 @@ def user_provides_health_update(user_id):
     if not st.session_state.get('user_id'):
         st.session_state.user_id = user_id
     if st.session_state.user_id is None:
-        st.error("Please authenticate first")
+        logging.info("User not authenticated yet")
         return
 
     with st.form("health_update_form"):
@@ -551,7 +551,7 @@ def main():
             coach = CoachProfile(current_user_id)
             coach.coach_tab()
         else:
-            st.warning("Please authenticate to view coach details.")
+            st.warning("Your personalized coach will be displayed after you authenticate.")
 
 class CoachProfile:
     def __init__(self, user_id, selected_attributes=None,
