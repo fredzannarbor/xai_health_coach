@@ -1,0 +1,5 @@
+streamlit
+tweepy
+dotenv
+stripe
+openai
